@@ -1,6 +1,7 @@
 import sys
 import os
 import requests
+import traceback
 
 try:
     print("正在檢查環境並載入套件...")
@@ -12,32 +13,60 @@ try:
     print("正在同步最新中文股名...")
     name_dict = {}
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json"
     }
-    
+
+    # 1. 嘗試透過 FinMind 抓取
     try:
-        res_fm = requests.get("https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo", timeout=10)
+        res_fm = requests.get("https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo", timeout=15)
         if res_fm.status_code == 200:
             for item in res_fm.json().get('data', []):
                 name_dict[str(item.get('stock_id')).strip()] = str(item.get('stock_name')).strip()
     except:
-        pass
+        print("FinMind API 逾時")
 
+    # 2. 嘗試透過證交所/櫃買中心抓取
     try:
-        res_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=10)
+        res_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=15)
         if res_twse.status_code == 200:
             for item in res_twse.json():
                 name_dict[str(item['Code']).strip()] = str(item['Name']).strip()
                 
-        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=10)
+        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=15)
         if res_tpex.status_code == 200:
             for item in res_tpex.json():
                 name_dict[str(item['SecuritiesCompanyCode']).strip()] = str(item['CompanyName']).strip()
     except:
-        pass
+        print("官方 API 阻擋 GitHub IP")
 
+    # 3. 終極防護：手動校正與常見熱門股快取字典
+    # 即使雲端伺服器被完全封鎖，也能確保熱門股票與校正名稱正確顯示
     name_dict.update({
-        '4958': '臻頂'
+        '4958': '臻頂',
+        '6182': '合晶',
+        '6274': '台燿',
+        '8299': '群聯',
+        '3293': '鈊象',
+        '3105': '穩懋',
+        '5483': '中美晶',
+        '6488': '環球晶',
+        '8069': '元太',
+        '3529': '力旺',
+        '5347': '世界',
+        '5274': '信驊',
+        '5371': '中光電',
+        '6409': '旭隼',
+        '3026': '禾伸堂',
+        '8261': '富鼎',
+        '4989': '榮科',
+        '5328': '華容',
+        '3055': '蔚華科',
+        '8033': '雷虎',
+        '1718': '中纖',
+        '5314': '世紀',
+        '8182': '加高',
+        '7795': '長廣'
     })
 
     # --- 抓取 TradingView 數據 ---
@@ -131,3 +160,78 @@ try:
 
     main_html_df = format_df_for_html(df)
     top20_html_df = format_df_for_html(top20_perf_df)
+
+    time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    date_display = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="zh-TW">
+    <head>
+        <meta charset="UTF-8">
+        <title>TW Top 200 Screener</title>
+        <style>
+            body {{ background-color: #131722; color: #d1d4dc; font-family: -apple-system, sans-serif; padding: 30px; margin: 0; }}
+            .header-title {{ color: #ffffff; margin-bottom: 20px; font-size: 24px; font-weight: bold; border-left: 4px solid #2962ff; padding-left: 10px; }}
+            .sub-title {{ color: #ffffff; margin-bottom: 20px; font-size: 20px; font-weight: bold; border-left: 4px solid #f23645; padding-left: 10px; }}
+            .section-divider {{ margin: 50px 0; border-top: 2px dashed #2a2e39; }}
+            table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+            th {{ background-color: #1e222d; color: #868993; font-weight: normal; padding: 12px 10px; text-align: right; border-bottom: 1px solid #2a2e39; border-top: 1px solid #2a2e39; white-space: nowrap; }}
+            th:nth-child(1), th:nth-child(2), td:nth-child(1), td:nth-child(2) {{ text-align: left; }}
+            td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }}
+            tr:hover {{ background-color: #2a2e39; }}
+        </style>
+    </head>
+    <body>
+        <div class="header-title">台股成交值 Top 200 篩選報告 ({date_display})</div>
+        {main_html_df.to_html(escape=False)}
+        <div class="section-divider"></div>
+        <div class="sub-title">🔥 一周表現最強 Top 20 (按成交值排序)</div>
+        {top20_html_df.to_html(escape=False)}
+    </body>
+    </html>
+    """
+
+    # --- 存檔作業 ---
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    history_dir = os.path.join(script_dir, "history")
+    os.makedirs(history_dir, exist_ok=True) 
+
+    excel_path = os.path.join(history_dir, f"{time_str}_TW_Top200.xlsx")
+    with pd.ExcelWriter(excel_path) as writer:
+        df.to_excel(writer, sheet_name='Top 200 成交值')
+        top20_perf_df.to_excel(writer, sheet_name='強勢 Top 20')
+        
+    history_html_path = os.path.join(history_dir, f"{time_str}_TW_Top200.html")
+    with open(history_html_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    html_path = os.path.join(script_dir, "tw_latest.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+    history_files = os.listdir(history_dir)
+    html_files = sorted([f for f in history_files if f.endswith('.html')], reverse=True)
+    history_links = ""
+    for file in html_files:
+        display_name = file.replace(".html", "")
+        icon = "🇺🇸" if "US" in display_name else "🇹🇼"
+        history_links += f'''
+        <div class="history-item">
+            <div class="title">{icon} {display_name}</div>
+            <div class="actions">
+                <a href="history/{file}" target="_blank" class="btn view-btn">👁️ 觀看報表</a>
+                <a href="history/{file.replace('.html', '.xlsx')}" class="btn dl-btn">💾 下載 Excel</a>
+            </div>
+        </div>
+        '''
+
+    history_list_html = f"""<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><style>body {{ background-color: #131722; color: #d1d4dc; font-family: sans-serif; padding: 30px; }} h2 {{ color: #ffffff; border-left: 4px solid #2962ff; padding-left: 10px; margin-bottom: 30px; }} .history-item {{ display: flex; justify-content: space-between; align-items: center; background: #1e222d; margin-bottom: 15px; padding: 15px 20px; border-radius: 8px; border: 1px solid #2a2e39; }} .history-item:hover {{ background: #2a2e39; }} .title {{ font-size: 16px; font-weight: bold; }} .btn {{ padding: 8px 15px; border-radius: 4px; text-decoration: none; font-size: 14px; font-weight: bold; transition: 0.2s; }} .view-btn {{ background: #2962ff; color: white; margin-right: 10px; }} .view-btn:hover {{ background: #1e4bd8; }} .dl-btn {{ background: #089981; color: white; }} .dl-btn:hover {{ background: #067a67; }}</style></head><body><h2>📂 雲端歷史報表庫</h2>{history_links}</body></html>"""
+    with open(os.path.join(script_dir, "history_list.html"), "w", encoding="utf-8") as f:
+        f.write(history_list_html)
+
+    print("✅ 台股資料與歷史目錄更新完成！")
+
+except Exception as e:
+    print("❌ 程式執行失敗，詳細錯誤訊息如下：")
+    traceback.print_exc()
