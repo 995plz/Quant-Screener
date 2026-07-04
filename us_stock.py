@@ -187,6 +187,3 @@ try:
 
 except Exception as e:
     print(f"\n❌ 程式執行失敗，詳細錯誤訊息如下：\n{e}")
-
-print("\n" + "="*50)
-input("【提示】請看上方訊息。確認完畢後，按下 Enter 鍵即可關閉此視窗...")
