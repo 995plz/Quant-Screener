@@ -1,6 +1,5 @@
 import sys
 import os
-import requests
 
 try:
     print("正在檢查環境並載入套件...")
@@ -8,34 +7,10 @@ try:
     import pandas as pd
     import datetime
 
-    print("正在向證交所與櫃買中心同步最新中文股名...")
-    name_dict = {}
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    try:
-        res_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=10)
-        if res_twse.status_code == 200:
-            for item in res_twse.json():
-                name_dict[str(item['Code']).strip()] = str(item['Name']).strip()
-                
-        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=10)
-        if res_tpex.status_code == 200:
-            for item in res_tpex.json():
-                name_dict[str(item['SecuritiesCompanyCode']).strip()] = str(item['CompanyName']).strip()
-    except Exception as e:
-        print(f"⚠️ 中文名稱同步發生部分錯誤，將自動使用備用名稱。({e})")
-
-    # 手動校正清單
-    name_dict.update({
-        '4958': '臻頂'
-    })
-
-    print("連線至 TradingView 抓取台股成交值前 200 名資料...")
+    print("連線至 TradingView 抓取美股成交值前 200 名資料...")
 
     columns = [
         'name',                      
-        'description',               
         'close',                     
         'change',                    
         'Perf.W',                    
@@ -43,22 +18,25 @@ try:
         'Value.Traded',              
         'relative_volume_10d_calc',  
         'ADR',                       
-        'market_cap_basic'           
+        'market_cap_basic',          
+        'sector'                     
     ]
 
     query = (Query()
-        .set_markets('taiwan')
+        .set_markets('america')
         .select(*columns)
         .order_by('Value.Traded', ascending=False)
         .limit(200)
     )
 
     df = query.get_scanner_data()[1]
+    
+    # 🔥【關鍵修正】在重新編排 1~200 名之前，先把隱藏在索引的完整代碼獨立備份出來
+    df['ticker'] = df.index 
 
     df['ADR'] = (df['ADR'] / df['close']) * 100
     df = df.rename(columns={
         'name': 'Symbol',
-        'description': 'TV_Name',
         'close': 'Price',
         'change': 'Chg %',
         'Perf.W': 'Perf % 1W',
@@ -66,24 +44,18 @@ try:
         'Value.Traded': 'Price x vol',
         'relative_volume_10d_calc': 'Rel vol',
         'ADR': 'ADR %',
-        'market_cap_basic': 'Mkt cap'
+        'market_cap_basic': 'Mkt cap',
+        'sector': 'Sector'
     })
-
-    # 翻譯與合併股名
-    df['ChineseName'] = df['Symbol'].astype(str).map(name_dict).fillna(df['TV_Name'])
-    df['Symbol'] = df['Symbol'].astype(str) + " " + df['ChineseName']
-    df = df.drop(columns=['TV_Name', 'ChineseName'])
 
     df.index = range(1, len(df) + 1)
     df.index.name = '排名'
 
-    # 取出一週表現前 20 名
     top20_perf_df = df.nlargest(20, 'Perf % 1W')
     top20_perf_df = top20_perf_df.sort_values(by='Price x vol', ascending=False)
     top20_perf_df.index = range(1, 21)
     top20_perf_df.index.name = '強勢排名'
 
-    # --- 數據格式化與上色 ---
     def color_pct(val):
         if pd.isna(val): return ""
         try:
@@ -107,10 +79,8 @@ try:
     def format_df_for_html(input_df):
         out_df = input_df.copy()
         
-        # 🔥【關鍵新增】將 Symbol 轉換為帶有 TradingView 連結的 HTML 標籤
         if 'ticker' in out_df.columns:
             out_df['Symbol'] = out_df.apply(lambda row: f'<a href="https://www.tradingview.com/chart/?symbol={row["ticker"]}" target="_blank" class="symbol-link">{row["Symbol"]}</a>', axis=1)
-            # 轉換完成後，網頁版就可以把 ticker 刪掉了
             out_df = out_df.drop(columns=['ticker'])
 
         out_df['Price'] = out_df['Price'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "")
@@ -134,26 +104,24 @@ try:
     <html lang="zh-TW">
     <head>
         <meta charset="UTF-8">
-        <title>TW Top 200 Screener</title>
+        <title>US Top 200 Screener</title>
         <style>
             body {{ background-color: #131722; color: #d1d4dc; font-family: -apple-system, sans-serif; padding: 30px; margin: 0; }}
             .header-title {{ color: #ffffff; margin-bottom: 20px; font-size: 24px; font-weight: bold; border-left: 4px solid #2962ff; padding-left: 10px; }}
             .sub-title {{ color: #ffffff; margin-bottom: 20px; font-size: 20px; font-weight: bold; border-left: 4px solid #f23645; padding-left: 10px; }}
             .section-divider {{ margin: 50px 0; border-top: 2px dashed #2a2e39; }}
-            
             table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
             th {{ background-color: #1e222d; color: #868993; font-weight: normal; padding: 12px 10px; text-align: right; border-bottom: 1px solid #2a2e39; border-top: 1px solid #2a2e39; white-space: nowrap; }}
-            th:nth-child(1), th:nth-child(2), td:nth-child(1), td:nth-child(2) {{ text-align: left; }}
+            th:nth-child(1), th:nth-child(2), th:last-child, td:nth-child(1), td:nth-child(2), td:last-child {{ text-align: left; }}
             td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }}
             tr:hover {{ background-color: #2a2e39; }}
             
-            /* 🔥【關鍵新增】設定超連結的樣式，滑鼠移過去會有底線 */
             .symbol-link {{ color: #2962ff; text-decoration: none; font-weight: bold; }}
             .symbol-link:hover {{ text-decoration: underline; color: #739aff; }}
         </style>
     </head>
     <body>
-        <div class="header-title">台股成交值 Top 200 篩選報告 ({date_display})</div>
+        <div class="header-title">美股成交值 Top 200 篩選報告 ({date_display})</div>
         {main_html_df.to_html(escape=False)}
         <div class="section-divider"></div>
         <div class="sub-title">🔥 一周表現最強 Top 20 (按成交值排序)</div>
@@ -162,25 +130,23 @@ try:
     </html>
     """
 
-    # --- 存檔作業 (雲端加強版) ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
     history_dir = os.path.join(script_dir, "history")
     os.makedirs(history_dir, exist_ok=True) 
 
-    # 🔥【關鍵新增】存入 Excel 前，先把隱藏的 ticker 欄位刪除，讓 Excel 保持乾淨
     excel_df = df.drop(columns=['ticker']) if 'ticker' in df.columns else df
     excel_top20_df = top20_perf_df.drop(columns=['ticker']) if 'ticker' in top20_perf_df.columns else top20_perf_df
 
-    excel_path = os.path.join(history_dir, f"{time_str}_TW_Top200.xlsx")
+    excel_path = os.path.join(history_dir, f"{time_str}_US_Top200.xlsx")
     with pd.ExcelWriter(excel_path) as writer:
         excel_df.to_excel(writer, sheet_name='Top 200 成交值')
         excel_top20_df.to_excel(writer, sheet_name='強勢 Top 20')
         
-    history_html_path = os.path.join(history_dir, f"{time_str}_TW_Top200.html")
+    history_html_path = os.path.join(history_dir, f"{time_str}_US_Top200.html")
     with open(history_html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
     
-    html_path = os.path.join(script_dir, "tw_latest.html")
+    html_path = os.path.join(script_dir, "us_latest.html")
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
 
@@ -204,6 +170,6 @@ try:
     with open(os.path.join(script_dir, "history_list.html"), "w", encoding="utf-8") as f:
         f.write(history_list_html)
 
-    print("✅ 台股資料與歷史目錄更新完成！")
+    print("✅ 美股資料與歷史目錄更新完成！")
 except Exception as e:
     print(f"❌ 程式執行失敗，詳細錯誤訊息如下：\n{e}")
