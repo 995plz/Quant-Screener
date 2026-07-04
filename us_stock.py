@@ -32,9 +32,6 @@ try:
 
     df = query.get_scanner_data()[1]
     
-    # 🔥 備份帶有交易所前綴的完整代碼 (如 NASDAQ:NVDA)
-    df['ticker'] = df.index.values
-
     df['ADR'] = (df['ADR'] / df['close']) * 100
     df = df.rename(columns={
         'name': 'Symbol',
@@ -48,6 +45,10 @@ try:
         'market_cap_basic': 'Mkt cap',
         'sector': 'Sector'
     })
+
+    # 移除不需要的 ticker 欄位 (不再需要超連結)
+    if 'ticker' in df.columns:
+        df = df.drop(columns=['ticker'])
 
     df.index = range(1, len(df) + 1)
     df.index.name = '排名'
@@ -79,15 +80,6 @@ try:
 
     def format_df_for_html(input_df):
         out_df = input_df.copy()
-        
-        # 🔥 加入藍色超連結樣式
-        if 'ticker' in out_df.columns:
-            out_df['Symbol'] = out_df.apply(
-                lambda row: f'<a href="https://www.tradingview.com/chart/?symbol={row["ticker"]}" target="_blank" class="symbol-link">{row["Symbol"]}</a>', axis=1
-            )
-            # 轉換後刪除 ticker 確保網頁乾淨
-            out_df = out_df.drop(columns=['ticker'])
-
         out_df['Price'] = out_df['Price'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "")
         out_df['Chg %'] = out_df['Chg %'].apply(color_pct)
         out_df['Perf % 1W'] = out_df['Perf % 1W'].apply(color_pct)
@@ -120,10 +112,6 @@ try:
             th:nth-child(1), th:nth-child(2), th:last-child, td:nth-child(1), td:nth-child(2), td:last-child {{ text-align: left; }}
             td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }}
             tr:hover {{ background-color: #2a2e39; }}
-            
-            /* 超連結樣式 */
-            .symbol-link {{ color: #2962ff; text-decoration: none; font-weight: bold; }}
-            .symbol-link:hover {{ text-decoration: underline; color: #739aff; }}
         </style>
     </head>
     <body>
@@ -136,18 +124,15 @@ try:
     </html>
     """
 
+    # --- 存檔作業 ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
     history_dir = os.path.join(script_dir, "history")
     os.makedirs(history_dir, exist_ok=True) 
 
-    # 存入 Excel 前刪除 ticker，讓下載的 Excel 保持純文字不帶連結
-    excel_df = df.drop(columns=['ticker']) if 'ticker' in df.columns else df
-    excel_top20_df = top20_perf_df.drop(columns=['ticker']) if 'ticker' in top20_perf_df.columns else top20_perf_df
-
     excel_path = os.path.join(history_dir, f"{time_str}_US_Top200.xlsx")
     with pd.ExcelWriter(excel_path) as writer:
-        excel_df.to_excel(writer, sheet_name='Top 200 成交值')
-        excel_top20_df.to_excel(writer, sheet_name='強勢 Top 20')
+        df.to_excel(writer, sheet_name='Top 200 成交值')
+        top20_perf_df.to_excel(writer, sheet_name='強勢 Top 20')
         
     history_html_path = os.path.join(history_dir, f"{time_str}_US_Top200.html")
     with open(history_html_path, "w", encoding="utf-8") as f:
