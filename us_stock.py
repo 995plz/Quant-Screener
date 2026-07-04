@@ -17,9 +17,6 @@ try:
 
     query = (Query().set_markets('america').select(*columns).order_by('Value.Traded', ascending=False).limit(200))
     df = query.get_scanner_data()[1]
-    
-    # 🔥 關鍵修復：把 API 預設回傳的完整字串 (包含 NASDAQ / NYSE / AMEX) 存起來當網址代碼
-    df['ticker'] = df.index.values
 
     df['ADR'] = (df['ADR'] / df['close']) * 100
     df = df.rename(columns={
@@ -28,6 +25,10 @@ try:
         'relative_volume_10d_calc': 'Rel vol', 'ADR': 'ADR %',
         'market_cap_basic': 'Mkt cap', 'sector': 'Sector'
     })
+    
+    # 清理多餘的 ticker 欄位
+    if 'ticker' in df.columns:
+        df = df.drop(columns=['ticker'])
 
     df.index = range(1, len(df) + 1)
     df.index.name = '排名'
@@ -44,8 +45,7 @@ try:
             color = "#089981" if v > 0 else "#f23645" if v < 0 else "#d1d4dc"
             sign = "+" if v > 0 else ""
             return f'<span style="color: {color};">{sign}{v:.2f}%</span>'
-        except:
-            return val
+        except: return val
 
     def format_large_num(val):
         if pd.isna(val): return ""
@@ -54,19 +54,10 @@ try:
             if v >= 1e9: return f"{v/1e9:.2f}B"
             if v >= 1e6: return f"{v/1e6:.2f}M"
             return f"{v:,.0f}"
-        except:
-            return val
+        except: return val
 
     def format_df_for_html(input_df):
         out_df = input_df.copy()
-        
-        # 轉換為藍色超連結
-        if 'ticker' in out_df.columns:
-            out_df['Symbol'] = out_df.apply(
-                lambda row: f'<a href="https://www.tradingview.com/chart/?symbol={row["ticker"]}" target="_blank" class="symbol-link">{row["Symbol"]}</a>', axis=1
-            )
-            out_df = out_df.drop(columns=['ticker'])
-        
         out_df['Price'] = out_df['Price'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "")
         out_df['Chg %'] = out_df['Chg %'].apply(color_pct)
         out_df['Perf % 1W'] = out_df['Perf % 1W'].apply(color_pct)
@@ -83,19 +74,16 @@ try:
     time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     date_display = datetime.datetime.now().strftime("%Y-%m-%d")
     
-    html_content = f"""<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>US Top 200 Screener</title><style>body {{ background-color: #131722; color: #d1d4dc; font-family: -apple-system, sans-serif; padding: 30px; margin: 0; }} .header-title {{ color: #ffffff; margin-bottom: 20px; font-size: 24px; font-weight: bold; border-left: 4px solid #2962ff; padding-left: 10px; }} .sub-title {{ color: #ffffff; margin-bottom: 20px; font-size: 20px; font-weight: bold; border-left: 4px solid #f23645; padding-left: 10px; }} .section-divider {{ margin: 50px 0; border-top: 2px dashed #2a2e39; }} table {{ width: 100%; border-collapse: collapse; font-size: 13px; }} th {{ background-color: #1e222d; color: #868993; font-weight: normal; padding: 12px 10px; text-align: right; border-bottom: 1px solid #2a2e39; border-top: 1px solid #2a2e39; white-space: nowrap; }} th:nth-child(1), th:nth-child(2), th:last-child, td:nth-child(1), td:nth-child(2), td:last-child {{ text-align: left; }} td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }} tr:hover {{ background-color: #2a2e39; }} .symbol-link {{ color: #2962ff; text-decoration: none; font-weight: bold; }} .symbol-link:hover {{ text-decoration: underline; color: #739aff; }}</style></head><body><div class="header-title">美股成交值 Top 200 篩選報告 ({date_display})</div>{main_html_df.to_html(escape=False)}<div class="section-divider"></div><div class="sub-title">🔥 一周表現最強 Top 20 (按成交值排序)</div>{top20_html_df.to_html(escape=False)}</body></html>"""
+    html_content = f"""<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>US Top 200 Screener</title><style>body {{ background-color: #131722; color: #d1d4dc; font-family: -apple-system, sans-serif; padding: 30px; margin: 0; }} .header-title {{ color: #ffffff; margin-bottom: 20px; font-size: 24px; font-weight: bold; border-left: 4px solid #2962ff; padding-left: 10px; }} .sub-title {{ color: #ffffff; margin-bottom: 20px; font-size: 20px; font-weight: bold; border-left: 4px solid #f23645; padding-left: 10px; }} .section-divider {{ margin: 50px 0; border-top: 2px dashed #2a2e39; }} table {{ width: 100%; border-collapse: collapse; font-size: 13px; }} th {{ background-color: #1e222d; color: #868993; font-weight: normal; padding: 12px 10px; text-align: right; border-bottom: 1px solid #2a2e39; border-top: 1px solid #2a2e39; white-space: nowrap; }} th:nth-child(1), th:nth-child(2), th:last-child, td:nth-child(1), td:nth-child(2), td:last-child {{ text-align: left; }} td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }} tr:hover {{ background-color: #2a2e39; }}</style></head><body><div class="header-title">美股成交值 Top 200 篩選報告 ({date_display})</div>{main_html_df.to_html(escape=False)}<div class="section-divider"></div><div class="sub-title">🔥 一周表現最強 Top 20 (按成交值排序)</div>{top20_html_df.to_html(escape=False)}</body></html>"""
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     history_dir = os.path.join(script_dir, "history")
     os.makedirs(history_dir, exist_ok=True) 
 
-    excel_df = df.drop(columns=['ticker']) if 'ticker' in df.columns else df
-    excel_top20_df = top20_perf_df.drop(columns=['ticker']) if 'ticker' in top20_perf_df.columns else top20_perf_df
-
     excel_path = os.path.join(history_dir, f"{time_str}_US_Top200.xlsx")
     with pd.ExcelWriter(excel_path) as writer:
-        excel_df.to_excel(writer, sheet_name='Top 200 成交值')
-        excel_top20_df.to_excel(writer, sheet_name='強勢 Top 20')
+        df.to_excel(writer, sheet_name='Top 200 成交值')
+        top20_perf_df.to_excel(writer, sheet_name='強勢 Top 20')
         
     history_html_path = os.path.join(history_dir, f"{time_str}_US_Top200.html")
     with open(history_html_path, "w", encoding="utf-8") as f:
