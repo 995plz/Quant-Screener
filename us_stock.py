@@ -18,7 +18,8 @@ try:
     query = (Query().set_markets('america').select(*columns).order_by('Value.Traded', ascending=False).limit(200))
     df = query.get_scanner_data()[1]
     
-    # 🔥 關鍵修復：完全不動原本的 ticker 欄位，保留 API 給的最精準代碼 (NASDAQ/NYSE/AMEX)
+    # 🔥 關鍵修復：把 API 預設回傳的完整字串 (包含 NASDAQ / NYSE / AMEX) 存起來當網址代碼
+    df['ticker'] = df.index.values
 
     df['ADR'] = (df['ADR'] / df['close']) * 100
     df = df.rename(columns={
