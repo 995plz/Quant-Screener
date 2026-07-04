@@ -54,6 +54,9 @@ try:
     )
 
     df = query.get_scanner_data()[1]
+    
+    # 🔥【關鍵修正】在重新編排 1~200 名之前，先把隱藏在索引的完整代碼獨立備份出來
+    df['ticker'] = df.index 
 
     df['ADR'] = (df['ADR'] / df['close']) * 100
     df = df.rename(columns={
@@ -107,10 +110,10 @@ try:
     def format_df_for_html(input_df):
         out_df = input_df.copy()
         
-        # 🔥【關鍵新增】將 Symbol 轉換為帶有 TradingView 連結的 HTML 標籤
+        # 將 Symbol 轉換為帶有 TradingView 連結的 HTML 標籤
         if 'ticker' in out_df.columns:
             out_df['Symbol'] = out_df.apply(lambda row: f'<a href="https://www.tradingview.com/chart/?symbol={row["ticker"]}" target="_blank" class="symbol-link">{row["Symbol"]}</a>', axis=1)
-            # 轉換完成後，網頁版就可以把 ticker 刪掉了
+            # 轉換完成後，網頁版把 ticker 刪掉維持畫面乾淨
             out_df = out_df.drop(columns=['ticker'])
 
         out_df['Price'] = out_df['Price'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "")
@@ -147,7 +150,7 @@ try:
             td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }}
             tr:hover {{ background-color: #2a2e39; }}
             
-            /* 🔥【關鍵新增】設定超連結的樣式，滑鼠移過去會有底線 */
+            /* 超連結的樣式，滑鼠移過去會有底線 */
             .symbol-link {{ color: #2962ff; text-decoration: none; font-weight: bold; }}
             .symbol-link:hover {{ text-decoration: underline; color: #739aff; }}
         </style>
@@ -167,7 +170,7 @@ try:
     history_dir = os.path.join(script_dir, "history")
     os.makedirs(history_dir, exist_ok=True) 
 
-    # 🔥【關鍵新增】存入 Excel 前，先把隱藏的 ticker 欄位刪除，讓 Excel 保持乾淨
+    # 存入 Excel 前，先把 ticker 欄位刪除，讓 Excel 保持乾淨
     excel_df = df.drop(columns=['ticker']) if 'ticker' in df.columns else df
     excel_top20_df = top20_perf_df.drop(columns=['ticker']) if 'ticker' in top20_perf_df.columns else top20_perf_df
 
