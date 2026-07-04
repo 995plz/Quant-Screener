@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全球股市量化監控</title>
+    <style>
+        body { background-color: #131722; color: #d1d4dc; font-family: -apple-system, sans-serif; margin: 0; padding: 0; overflow: hidden; }
+        .tabs { display: flex; background: #1e222d; padding: 10px 20px; border-bottom: 1px solid #2a2e39; }
+        .tab-btn { background: transparent; color: #868993; border: none; padding: 10px 20px; margin-right: 5px; cursor: pointer; border-radius: 4px; font-size: 16px; font-weight: bold; transition: 0.2s; }
+        .tab-btn:hover { color: #d1d4dc; background: #2a2e39; }
+        .tab-btn.active { background: #2962ff; color: #ffffff; }
+        iframe { width: 100%; height: calc(100vh - 55px); border: none; display: none; background-color: #131722; }
+        iframe.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('us', this)">🇺🇸 美股 Top 200</button>
+        <button class="tab-btn" onclick="switchTab('tw', this)">🇹🇼 台股 Top 200</button>
+    </div>
+    
+    <iframe id="us-frame" src="us_latest.html" class="active"></iframe>
+    <iframe id="tw-frame" src="tw_latest.html"></iframe>
+
+    <script>
+        function switchTab(market, btnElement) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('iframe').forEach(frame => frame.classList.remove('active'));
+            btnElement.classList.add('active');
+            document.getElementById(market + '-frame').classList.add('active');
+        }
+    </script>
+</body>
+</html>
