@@ -7,6 +7,7 @@ try:
     from tradingview_screener import Query
     import pandas as pd
     import datetime
+    import numpy as np # 新增 numpy 用來處理空值
 
     print("連線至 TradingView 抓取美股成交值前 200 名資料...")
 
@@ -18,7 +19,9 @@ try:
     query = (Query().set_markets('america').select(*columns).order_by('Value.Traded', ascending=False).limit(200))
     df = query.get_scanner_data()[1]
 
-    df['ADR'] = (df['ADR'] / df['close']) * 100
+    # 防呆：確保 close 不是 0 或空值才計算 ADR
+    df['ADR'] = np.where(df['close'] > 0, (df['ADR'] / df['close']) * 100, 0)
+    
     df = df.rename(columns={
         'name': 'Symbol', 'close': 'Price', 'change': 'Chg %',
         'Perf.W': 'Perf % 1W', 'volume': 'Vol', 'Value.Traded': 'Price x vol',
@@ -26,27 +29,26 @@ try:
         'market_cap_basic': 'Mkt cap', 'sector': 'Sector'
     })
     
-    # 拔除 ticker，確保沒有超連結
     if 'ticker' in df.columns:
         df = df.drop(columns=['ticker'])
 
     df.index = range(1, len(df) + 1)
     df.index.name = '排名'
 
-    # 區塊 2：當日漲幅最強 Top 20
-    top20_daily_df = df.nlargest(20, 'Chg %')
-    top20_daily_df = top20_daily_df.sort_values(by='Price x vol', ascending=False)
-    top20_daily_df.index = range(1, 21)
+    # 🔥 區塊 2：當日漲幅最強 Top 20 (加入容錯，排除沒有漲跌幅的極端標的)
+    safe_chg_df = df.dropna(subset=['Chg %'])
+    top20_daily_df = safe_chg_df.nlargest(20, 'Chg %').sort_values(by='Price x vol', ascending=False)
+    top20_daily_df.index = range(1, len(top20_daily_df) + 1)
     top20_daily_df.index.name = '當日強勢'
 
-    # 區塊 3：一周表現最強 Top 20
-    top20_perf_df = df.nlargest(20, 'Perf % 1W')
-    top20_perf_df = top20_perf_df.sort_values(by='Price x vol', ascending=False)
-    top20_perf_df.index = range(1, 21)
+    # 🔥 區塊 3：一周表現最強 Top 20
+    safe_perf_df = df.dropna(subset=['Perf % 1W'])
+    top20_perf_df = safe_perf_df.nlargest(20, 'Perf % 1W').sort_values(by='Price x vol', ascending=False)
+    top20_perf_df.index = range(1, len(top20_perf_df) + 1)
     top20_perf_df.index.name = '一周強勢'
 
     def color_pct(val):
-        if pd.isna(val): return ""
+        if pd.isna(val) or val == "": return ""
         try:
             v = float(val)
             color = "#089981" if v > 0 else "#f23645" if v < 0 else "#d1d4dc"
@@ -55,7 +57,7 @@ try:
         except: return val
 
     def format_large_num(val):
-        if pd.isna(val): return ""
+        if pd.isna(val) or val == "": return ""
         try:
             v = float(val)
             if v >= 1e9: return f"{v/1e9:.2f}B"
@@ -115,6 +117,8 @@ try:
         f.write(history_list_html)
 
     print("✅ 美股資料與歷史目錄更新完成！")
+
 except Exception as e:
     print("❌ 程式執行失敗，詳細錯誤訊息如下：")
     traceback.print_exc()
+    sys.exit(1) # 🔥 關鍵：如果失敗，強制 GitHub 報錯亮紅燈！
