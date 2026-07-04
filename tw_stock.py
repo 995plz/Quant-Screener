@@ -8,11 +8,23 @@ try:
     import pandas as pd
     import datetime
 
-    print("正在向證交所與櫃買中心同步最新中文股名...")
+    # --- 強化版中文名稱抓取 (雙重備援機制，突破 IP 封鎖) ---
+    print("正在同步最新中文股名...")
     name_dict = {}
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+    
+    # 策略一：使用對雲端友善的 FinMind API
+    try:
+        res_fm = requests.get("https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo", timeout=10)
+        if res_fm.status_code == 200:
+            for item in res_fm.json().get('data', []):
+                name_dict[str(item.get('stock_id')).strip()] = str(item.get('stock_name')).strip()
+    except:
+        pass
+
+    # 策略二：使用政府 OpenAPI 作為備用
     try:
         res_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=10)
         if res_twse.status_code == 200:
@@ -23,14 +35,15 @@ try:
         if res_tpex.status_code == 200:
             for item in res_tpex.json():
                 name_dict[str(item['SecuritiesCompanyCode']).strip()] = str(item['CompanyName']).strip()
-    except Exception as e:
-        print(f"⚠️ 中文名稱同步發生部分錯誤，將自動使用備用名稱。({e})")
+    except:
+        pass
 
     # 手動校正清單
     name_dict.update({
         '4958': '臻頂'
     })
 
+    # --- 抓取 TradingView 數據 ---
     print("連線至 TradingView 抓取台股成交值前 200 名資料...")
 
     columns = [
@@ -55,8 +68,7 @@ try:
 
     df = query.get_scanner_data()[1]
     
-    # 🔥【關鍵修正】在重新編排 1~200 名之前，先把隱藏在索引的完整代碼獨立備份出來
-    df['ticker'] = df.index 
+    # 🔥 已經移除了造成 Bug 的 df['ticker'] = df.index，直接保留原始的交易所 ticker
 
     df['ADR'] = (df['ADR'] / df['close']) * 100
     df = df.rename(columns={
@@ -110,10 +122,10 @@ try:
     def format_df_for_html(input_df):
         out_df = input_df.copy()
         
-        # 將 Symbol 轉換為帶有 TradingView 連結的 HTML 標籤
+        # 讀取帶有 TWSE / TPEX 前綴的正確 ticker，生成完美的 TradingView K線連結
         if 'ticker' in out_df.columns:
             out_df['Symbol'] = out_df.apply(lambda row: f'<a href="https://www.tradingview.com/chart/?symbol={row["ticker"]}" target="_blank" class="symbol-link">{row["Symbol"]}</a>', axis=1)
-            # 轉換完成後，網頁版把 ticker 刪掉維持畫面乾淨
+            # 轉換完成後刪除，維持網頁報表乾淨
             out_df = out_df.drop(columns=['ticker'])
 
         out_df['Price'] = out_df['Price'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "")
@@ -150,7 +162,6 @@ try:
             td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }}
             tr:hover {{ background-color: #2a2e39; }}
             
-            /* 超連結的樣式，滑鼠移過去會有底線 */
             .symbol-link {{ color: #2962ff; text-decoration: none; font-weight: bold; }}
             .symbol-link:hover {{ text-decoration: underline; color: #739aff; }}
         </style>
@@ -165,12 +176,12 @@ try:
     </html>
     """
 
-    # --- 存檔作業 (雲端加強版) ---
+    # --- 存檔作業 ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
     history_dir = os.path.join(script_dir, "history")
     os.makedirs(history_dir, exist_ok=True) 
 
-    # 存入 Excel 前，先把 ticker 欄位刪除，讓 Excel 保持乾淨
+    # 存入 Excel 前刪除 ticker 欄位，維持 Excel 清單純粹的數據感
     excel_df = df.drop(columns=['ticker']) if 'ticker' in df.columns else df
     excel_top20_df = top20_perf_df.drop(columns=['ticker']) if 'ticker' in top20_perf_df.columns else top20_perf_df
 
