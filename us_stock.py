@@ -31,8 +31,7 @@ try:
 
     df = query.get_scanner_data()[1]
     
-    # 🔥【關鍵修正】在重新編排 1~200 名之前，先把隱藏在索引的完整代碼獨立備份出來
-    df['ticker'] = df.index 
+    # 🔥 直接保留 API 賦予的正確 ticker (包含 NASDAQ, NYSE 等前綴)
 
     df['ADR'] = (df['ADR'] / df['close']) * 100
     df = df.rename(columns={
