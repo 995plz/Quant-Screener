@@ -64,17 +64,23 @@ try:
     df['Symbol'] = df['Symbol'].astype(str) + " " + df['ChineseName']
     df = df.drop(columns=['TV_Name', 'ChineseName'])
     
-    # 清理多餘的 ticker 欄位
     if 'ticker' in df.columns:
         df = df.drop(columns=['ticker'])
 
     df.index = range(1, len(df) + 1)
     df.index.name = '排名'
 
+    # 🔥 新增：當日漲幅最強 Top 20 (按成交值降冪排序)
+    top20_daily_df = df.nlargest(20, 'Chg %')
+    top20_daily_df = top20_daily_df.sort_values(by='Price x vol', ascending=False)
+    top20_daily_df.index = range(1, 21)
+    top20_daily_df.index.name = '當日強勢'
+
+    # 原有：一周表現最強 Top 20 (按成交值降冪排序)
     top20_perf_df = df.nlargest(20, 'Perf % 1W')
     top20_perf_df = top20_perf_df.sort_values(by='Price x vol', ascending=False)
     top20_perf_df.index = range(1, 21)
-    top20_perf_df.index.name = '強勢排名'
+    top20_perf_df.index.name = '一周強勢'
 
     def color_pct(val):
         if pd.isna(val): return ""
@@ -107,12 +113,14 @@ try:
         return out_df
 
     main_html_df = format_df_for_html(df)
+    top20_daily_html_df = format_df_for_html(top20_daily_df) # 🔥 格式化新區塊
     top20_html_df = format_df_for_html(top20_perf_df)
 
     time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     date_display = datetime.datetime.now().strftime("%Y-%m-%d")
     
-    html_content = f"""<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>TW Top 200 Screener</title><style>body {{ background-color: #131722; color: #d1d4dc; font-family: -apple-system, sans-serif; padding: 30px; margin: 0; }} .header-title {{ color: #ffffff; margin-bottom: 20px; font-size: 24px; font-weight: bold; border-left: 4px solid #2962ff; padding-left: 10px; }} .sub-title {{ color: #ffffff; margin-bottom: 20px; font-size: 20px; font-weight: bold; border-left: 4px solid #f23645; padding-left: 10px; }} .section-divider {{ margin: 50px 0; border-top: 2px dashed #2a2e39; }} table {{ width: 100%; border-collapse: collapse; font-size: 13px; }} th {{ background-color: #1e222d; color: #868993; font-weight: normal; padding: 12px 10px; text-align: right; border-bottom: 1px solid #2a2e39; border-top: 1px solid #2a2e39; white-space: nowrap; }} th:nth-child(1), th:nth-child(2), td:nth-child(1), td:nth-child(2) {{ text-align: left; }} td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }} tr:hover {{ background-color: #2a2e39; }}</style></head><body><div class="header-title">台股成交值 Top 200 篩選報告 ({date_display})</div>{main_html_df.to_html(escape=False)}<div class="section-divider"></div><div class="sub-title">🔥 一周表現最強 Top 20 (按成交值排序)</div>{top20_html_df.to_html(escape=False)}</body></html>"""
+    # 🔥 在 HTML 字串中加入當日強勢區塊
+    html_content = f"""<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>TW Top 200 Screener</title><style>body {{ background-color: #131722; color: #d1d4dc; font-family: -apple-system, sans-serif; padding: 30px; margin: 0; }} .header-title {{ color: #ffffff; margin-bottom: 20px; font-size: 24px; font-weight: bold; border-left: 4px solid #2962ff; padding-left: 10px; }} .sub-title {{ color: #ffffff; margin-bottom: 20px; font-size: 20px; font-weight: bold; border-left: 4px solid #f23645; padding-left: 10px; }} .section-divider {{ margin: 50px 0; border-top: 2px dashed #2a2e39; }} table {{ width: 100%; border-collapse: collapse; font-size: 13px; }} th {{ background-color: #1e222d; color: #868993; font-weight: normal; padding: 12px 10px; text-align: right; border-bottom: 1px solid #2a2e39; border-top: 1px solid #2a2e39; white-space: nowrap; }} th:nth-child(1), th:nth-child(2), td:nth-child(1), td:nth-child(2) {{ text-align: left; }} td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }} tr:hover {{ background-color: #2a2e39; }}</style></head><body><div class="header-title">台股成交值 Top 200 篩選報告 ({date_display})</div>{main_html_df.to_html(escape=False)}<div class="section-divider"></div><div class="sub-title">🚀 當日漲幅最強 Top 20 (按成交值排序)</div>{top20_daily_html_df.to_html(escape=False)}<div class="section-divider"></div><div class="sub-title">🔥 一周表現最強 Top 20 (按成交值排序)</div>{top20_html_df.to_html(escape=False)}</body></html>"""
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     history_dir = os.path.join(script_dir, "history")
@@ -121,7 +129,8 @@ try:
     excel_path = os.path.join(history_dir, f"{time_str}_TW_Top200.xlsx")
     with pd.ExcelWriter(excel_path) as writer:
         df.to_excel(writer, sheet_name='Top 200 成交值')
-        top20_perf_df.to_excel(writer, sheet_name='強勢 Top 20')
+        top20_daily_df.to_excel(writer, sheet_name='當日強勢 Top 20') # 🔥 Excel 增加一個分頁
+        top20_perf_df.to_excel(writer, sheet_name='一周強勢 Top 20')
         
     history_html_path = os.path.join(history_dir, f"{time_str}_TW_Top200.html")
     with open(history_html_path, "w", encoding="utf-8") as f:
