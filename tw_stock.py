@@ -130,4 +130,4 @@ try:
         return out_df
 
     main_html_df = format_df_for_html(df)
-    top20_html_df = format_df_for_html(top20_perf_df
+    top20_html_df = format_df_for_html(top20_perf_df)
