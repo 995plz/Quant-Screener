@@ -1,0 +1,28 @@
+name: 每日台股更新 (14:00)
+
+on:
+  schedule:
+    # UTC 06:00 = 台灣時間 14:00 (週一到週五執行)
+    - cron: '0 6 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  update-tw:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    - run: pip install -r requirements.txt
+    - name: 執行台股抓取
+      run: python tw_stock.py
+    - name: 存檔並留下紀錄
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .
+        git commit -m "Auto-update TW stock data" || echo "No changes"
+        git push
