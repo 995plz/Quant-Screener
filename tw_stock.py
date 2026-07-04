@@ -9,7 +9,6 @@ try:
     import pandas as pd
     import datetime
 
-    # --- 強化版中文名稱抓取 ---
     print("正在同步最新中文股名...")
     name_dict = {}
     headers = {
@@ -17,16 +16,14 @@ try:
         "Accept": "application/json"
     }
 
-    # 1. 嘗試透過 FinMind 抓取
     try:
         res_fm = requests.get("https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo", timeout=15)
         if res_fm.status_code == 200:
             for item in res_fm.json().get('data', []):
                 name_dict[str(item.get('stock_id')).strip()] = str(item.get('stock_name')).strip()
     except:
-        print("FinMind API 逾時")
+        pass
 
-    # 2. 嘗試透過證交所/櫃買中心抓取
     try:
         res_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=15)
         if res_twse.status_code == 200:
@@ -38,38 +35,15 @@ try:
             for item in res_tpex.json():
                 name_dict[str(item['SecuritiesCompanyCode']).strip()] = str(item['CompanyName']).strip()
     except:
-        print("官方 API 阻擋 GitHub IP")
+        pass
 
-    # 3. 終極防護：手動校正與常見熱門股快取字典
-    # 即使雲端伺服器被完全封鎖，也能確保熱門股票與校正名稱正確顯示
     name_dict.update({
-        '4958': '臻頂',
-        '6182': '合晶',
-        '6274': '台燿',
-        '8299': '群聯',
-        '3293': '鈊象',
-        '3105': '穩懋',
-        '5483': '中美晶',
-        '6488': '環球晶',
-        '8069': '元太',
-        '3529': '力旺',
-        '5347': '世界',
-        '5274': '信驊',
-        '5371': '中光電',
-        '6409': '旭隼',
-        '3026': '禾伸堂',
-        '8261': '富鼎',
-        '4989': '榮科',
-        '5328': '華容',
-        '3055': '蔚華科',
-        '8033': '雷虎',
-        '1718': '中纖',
-        '5314': '世紀',
-        '8182': '加高',
-        '7795': '長廣'
+        '4958': '臻頂', '6182': '合晶', '6274': '台燿', '8299': '群聯', '3293': '鈊象', '3105': '穩懋',
+        '5483': '中美晶', '6488': '環球晶', '8069': '元太', '3529': '力旺', '5347': '世界', '5274': '信驊',
+        '5371': '中光電', '6409': '旭隼', '3026': '禾伸堂', '8261': '富鼎', '4989': '榮科', '5328': '華容',
+        '3055': '蔚華科', '8033': '雷虎', '1718': '中纖', '5314': '世紀', '8182': '加高', '7795': '長廣'
     })
 
-    # --- 抓取 TradingView 數據 ---
     print("連線至 TradingView 抓取台股成交值前 200 名資料...")
 
     columns = [
@@ -93,6 +67,10 @@ try:
     )
 
     df = query.get_scanner_data()[1]
+    
+    # 🔥 備份帶有 TWSE / TPEX 前綴的原始代碼
+    df['ticker'] = df.index.values
+
     df['ADR'] = (df['ADR'] / df['close']) * 100
     df = df.rename(columns={
         'name': 'Symbol',
@@ -107,11 +85,6 @@ try:
         'market_cap_basic': 'Mkt cap'
     })
 
-    # 移除不需要的 ticker 欄位 (不再需要超連結)
-    if 'ticker' in df.columns:
-        df = df.drop(columns=['ticker'])
-
-    # 翻譯與合併股名
     df['ChineseName'] = df['Symbol'].astype(str).map(name_dict).fillna(df['TV_Name'])
     df['Symbol'] = df['Symbol'].astype(str) + " " + df['ChineseName']
     df = df.drop(columns=['TV_Name', 'ChineseName'])
@@ -119,13 +92,11 @@ try:
     df.index = range(1, len(df) + 1)
     df.index.name = '排名'
 
-    # 取出一週表現前 20 名
     top20_perf_df = df.nlargest(20, 'Perf % 1W')
     top20_perf_df = top20_perf_df.sort_values(by='Price x vol', ascending=False)
     top20_perf_df.index = range(1, 21)
     top20_perf_df.index.name = '強勢排名'
 
-    # --- 數據格式化與上色 ---
     def color_pct(val):
         if pd.isna(val): return ""
         try:
@@ -148,6 +119,14 @@ try:
 
     def format_df_for_html(input_df):
         out_df = input_df.copy()
+        
+        # 🔥 加入藍色超連結樣式
+        if 'ticker' in out_df.columns:
+            out_df['Symbol'] = out_df.apply(
+                lambda row: f'<a href="https://www.tradingview.com/chart/?symbol={row["ticker"]}" target="_blank" class="symbol-link">{row["Symbol"]}</a>', axis=1
+            )
+            out_df = out_df.drop(columns=['ticker'])
+
         out_df['Price'] = out_df['Price'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "")
         out_df['Chg %'] = out_df['Chg %'].apply(color_pct)
         out_df['Perf % 1W'] = out_df['Perf % 1W'].apply(color_pct)
@@ -180,6 +159,10 @@ try:
             th:nth-child(1), th:nth-child(2), td:nth-child(1), td:nth-child(2) {{ text-align: left; }}
             td {{ padding: 10px; border-bottom: 1px solid #2a2e39; text-align: right; }}
             tr:hover {{ background-color: #2a2e39; }}
+            
+            /* 超連結樣式 */
+            .symbol-link {{ color: #2962ff; text-decoration: none; font-weight: bold; }}
+            .symbol-link:hover {{ text-decoration: underline; color: #739aff; }}
         </style>
     </head>
     <body>
@@ -192,15 +175,17 @@ try:
     </html>
     """
 
-    # --- 存檔作業 ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
     history_dir = os.path.join(script_dir, "history")
     os.makedirs(history_dir, exist_ok=True) 
 
+    excel_df = df.drop(columns=['ticker']) if 'ticker' in df.columns else df
+    excel_top20_df = top20_perf_df.drop(columns=['ticker']) if 'ticker' in top20_perf_df.columns else top20_perf_df
+
     excel_path = os.path.join(history_dir, f"{time_str}_TW_Top200.xlsx")
     with pd.ExcelWriter(excel_path) as writer:
-        df.to_excel(writer, sheet_name='Top 200 成交值')
-        top20_perf_df.to_excel(writer, sheet_name='強勢 Top 20')
+        excel_df.to_excel(writer, sheet_name='Top 200 成交值')
+        excel_top20_df.to_excel(writer, sheet_name='強勢 Top 20')
         
     history_html_path = os.path.join(history_dir, f"{time_str}_TW_Top200.html")
     with open(history_html_path, "w", encoding="utf-8") as f:
