@@ -226,3 +226,5 @@ try:
         f.write(history_list_html)
 
     print("✅ 美股資料與歷史目錄更新完成！")
+except Exception as e:
+    print(f"❌ 程式執行失敗，詳細錯誤訊息如下：\n{e}")    
