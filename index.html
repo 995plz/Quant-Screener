@@ -18,10 +18,12 @@
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('us', this)">🇺🇸 美股 Top 200</button>
         <button class="tab-btn" onclick="switchTab('tw', this)">🇹🇼 台股 Top 200</button>
+        <button class="tab-btn" onclick="switchTab('history', this)">📂 歷史紀錄</button>
     </div>
     
     <iframe id="us-frame" src="us_latest.html" class="active"></iframe>
     <iframe id="tw-frame" src="tw_latest.html"></iframe>
+    <iframe id="history-frame" src="history_list.html"></iframe>
 
     <script>
         function switchTab(market, btnElement) {
